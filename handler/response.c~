@@ -1,0 +1,64 @@
+#include "handle_client.h"
+#include "response.h"
+#include <string.h>
+const char *crlf = "\r\n";
+const char *sp =" ";
+const char *http_version = "HTTP/1.1";
+const char *status_code_501 = "501";
+const char *colon = ": ";
+const char *content_length_hdr = "Content-Length";
+
+
+char *construct_error(char *code, char *reason){
+    char *reply = (char *)calloc(BUF_SIZE, sizeof(char));
+    construct_status_line(reply, code, reason);
+    construct_header(reply, content_length_hdr, "0");
+    end_header(reply);
+    return reply;
+}
+
+void construct_status_line(char *reply, char *code, char *reason){
+    sprintf(reply, "%s%s%s%s%s%s", http_version, sp, code, sp, reason, crlf);
+}
+
+void construct_header(char *reply,const char *header,const char *value){
+    strcat(reply, header);
+    strcat(reply, colon);
+    strcat(reply, value);
+    strcat(reply, crlf);
+}
+
+void end_header(char *reply){
+    strcat(reply, crlf);
+}
+
+void reply_to_client(char *message, int fd){
+
+    int err = send(fd, message, strlen(message), 0);
+    if(err == -1){
+        perror("send");
+    }
+}
+
+void send_error(char *code, char *reason, int fd){
+    char *reply = construct_error(code, reason);
+    reply_to_client(reply, fd);
+}
+
+void do_GET(Request *req, int fd){
+    if(check_HTTP_version(req) == -1){
+        send_error("505", "HTTP version not supported", fd);
+    }
+
+    
+}
+
+int check_HTTP_version(Request *req){
+    char *http_version = req->http_version;
+    char *target = "HTTP/1.1";
+    if(!strcmp(http_version, target)){
+        return 0;
+    }
+    return -1;
+}
+
