@@ -7,42 +7,59 @@
 #define RUNNING_DIR "/home/lzx/computer_network/liso_server/"
 //#define DEBUG_VERBOSE 1
 //char log_dir[BUF_SIZE] = "/home/lzx/computer_network/liso_server/log/";
-//fo
+//f
 
 int logging_fd;
 char *logging_path;
 char *WWW_FOLDER;
 char *lock_file;
+char *private_key_file;
+char *certificate_file;
 client_pool pool;
 #define USAGE "liso server usage:\n%s http port https port logfile lockfile wwwfolder private key file certificate file\n "
 
 // git test
 int main(int argc, char *argv[]){
     int sockfd;
+    int https_sockfd;
+    SSL_CTX *ssl_context = NULL;
     int client_sockfd;
 
-    if(argc < 7){
+    if(argc < 8){
         fprintf(stderr, USAGE, argv[0]);
         exit(-1);
     }
 
 
     int port = atoi(argv[1]);
-    logging_path = argv[2];
+    int https_port = atoi(argv[2]);
+    logging_path = argv[3];
     //init_logging();x
-    lock_file = argv[3];
-    WWW_FOLDER = argv[4];
+    lock_file = argv[4];
+    WWW_FOLDER = argv[5];
+    private_key_file = argv[6];
+    certificate_file = argv[7];
     #ifdef DEBUG_VERBOSE
-         daemonize();
+    //daemonize();
     #endif
     create_dictionary(WWW_FOLDER, S_IRWXU|S_IRWXG | S_IRWXO|S_IROTH|S_IXOTH);
     //then create socket, bind, listen,
     init_logging();
-    sockfd = create_server_sock(port);
-    init_pool(sockfd);
+    ssl_init(&ssl_context, private_key_file, certificate_file);
+    if((sockfd = create_server_sock(port)) < 0){
+        return EXIT_FAILURE;
+    }
+    //start_listening(sockfd);
+    if((https_sockfd = create_ssl_server_sock(https_port, ssl_context)) < 0){
+        return EXIT_FAILURE;
+    }
+    // start_listening(https_sockfd);
+    init_pool(sockfd, https_sockfd);
     log_info("HTTP PORT: %d\n", port);
+    log_info("HTTPS PORT: %d\n", https_port);
     log_info("www folder:%s\n", WWW_FOLDER);
     start_listening(sockfd);
+    start_listening(https_sockfd);
     //to prepare select's based server
     while(1){
         pool.read_fds = pool.master;
@@ -57,18 +74,33 @@ int main(int argc, char *argv[]){
             continue;
         }
         if(FD_ISSET(sockfd, &pool.read_fds)){
-            client_sockfd = accept_connection(sockfd);
+            char remote_ip[INET_ADDRSTRLEN] ={};
+            client_sockfd = accept_connection(sockfd, remote_ip);
             if(client_sockfd == -1){
                 log_error("error in accept connection");
                 continue;
             } else{
-                add_client_to_pool(client_sockfd);
+                fprintf(stderr, "remote ip:%s\n", remote_ip);
+                add_client_to_pool(client_sockfd, remote_ip, HTTP_CLIENT, NULL);
             }
-        }else {
-            handle_client(sockfd);
+        }else if(FD_ISSET(https_sockfd, &pool.read_fds)){
+            char remote_ip[INET_ADDRSTRLEN] = {};
+            client_sockfd = accept_connection(https_sockfd, remote_ip);
+            if(client_sockfd == -1){
+                log_error("error in accept https connection\n");
+                SSL_CTX_free(ssl_context);
+                continue;
+            }else {
+                SSL *client_context = NULL;
+                wrap_socket_with_ssl(&client_context, ssl_context,https_sockfd, client_sockfd);
+                add_client_to_pool(client_sockfd, remote_ip, HTTPS_CLIENT, client_context);
+            }
+        } else {
+            handle_client();
         }
     }
 }
+
 int daemonize(){
     int i, lfp, pid = fork();
     char str[256] = {0};

@@ -13,8 +13,8 @@ DEPS = $(LOG_DIR)/logging.h $(PARSE_DIR)/y.tab.h $(PARSE_DIR)/parse.h $(UTILITIE
 
 OBJ = $(patsubst %,$(OBJ_DIR)/%, $(_OBJ))
 
-lisod:$(OBJ)
-	$(CC) -o $@ $^
+lisod:$(OBJ) 
+	$(CC) -o $@ $^ -lssl
 
 $(OBJ_DIR)/y.tab.o: $(PARSE_DIR)/y.tab.c $(DEPS)
 	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
@@ -28,7 +28,7 @@ $(OBJ_DIR)/parse.o: $(PARSE_DIR)/parse.c $(DEPS)
 $(OBJ_DIR)/logging.o: $(LOG_DIR)/logging.c $(DEPS)
 	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
 
-$(OBJ_DIR)/common.o: $(UTILITIES_DIR)/common.c $(DEPS)
+$(OBJ_DIR)/common.o: $(UTILITIES_DIR)/common.c $(UTILITIES_DIR)/common.h -lssl
 	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
 $(OBJ_DIR)/handle_client.o: $(HANDLER_DIR)/handle_client.c $(DEPS)
 	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
@@ -50,6 +50,7 @@ clean:
 	rm -f $(OBJ_DIR)/*.o
 	rm lisod
 	rm -f /WWW
-	rm message/*.log
+	rm -f message/*.log
+	rm -f message/*.lock
 
 

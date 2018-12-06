@@ -9,14 +9,15 @@
 client_pool pool;
 client_pool *p = &pool;
 
-void init_pool(int listen_fd){
+void init_pool(int listen_fd, int ssl_sockfd){
     FD_ZERO(&p->master);
     FD_ZERO(&p->read_fds);
     FD_ZERO(&p->write_fds);
-
+    p->listen_fd = listen_fd;
+    p->ssl_sockfd = ssl_sockfd;
     FD_SET(listen_fd, &p->master);
-
-    p->fd_max = listen_fd;
+    FD_SET(ssl_sockfd, &p->master);
+    p->fd_max = (listen_fd > ssl_sockfd ? listen_fd: ssl_sockfd);
     p->max_index = -1;
     p->n_ready = 0;//this is because server id;
 
@@ -25,16 +26,20 @@ void init_pool(int listen_fd){
         p->buffer_offset[i] = -1;
         p->cur_allocated[i] = 0;
         p->received_headers[i] = -1;
+        p->type[i] = INVALID_CLIENT;
+        p->context[i] = NULL;
     }
 }
 
-void add_client_to_pool(int client_sockfd){
+void add_client_to_pool(int client_sockfd, char *remote_ip, client_type type, SSL *context){
     p->n_ready--;//because server id has been read;
     FD_SET(client_sockfd, &p->master);
     int i;
     for( i = 0; i < FD_SIZE; i++){
         if(p->client_fd[i] == -1){
             p->client_fd[i] = client_sockfd;
+            p->type[i] = type;
+            p->context[i] = context;
             p->client_buffer[i] = (char *)calloc(BUF_SIZE, sizeof(char));
             p->buffer_offset[i] = 0;
             p->cur_allocated[i] = sizeof(char) * BUF_SIZE;
@@ -125,7 +130,7 @@ char* append_request(int client_fd, char *buf, size_t len){
 }
 
 
-void handle_client(int listen_fd){
+void handle_client(){
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
     ssize_t readret = 0;
@@ -138,8 +143,12 @@ void handle_client(int listen_fd){
 
         if(FD_ISSET(fd, &p->read_fds)) {
             fcntl(fd, F_SETFL, O_NONBLOCK);// set client non-blocking
-
-            readret = recv(fd, buf, BUF_SIZE, 0);
+            if(p->type[i] == HTTP_CLIENT){
+                readret = recv(fd, buf, BUF_SIZE, 0);
+            }
+            if(p->type[i] == HTTPS_CLIENT){
+                readret = SSL_read(p->context[i], buf, BUF_SIZE);
+            }
             if(readret > 0){
                 recv_buf = append_request(fd, buf, readret);
 
