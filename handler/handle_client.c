@@ -23,8 +23,6 @@ void init_pool(int listen_fd, int ssl_sockfd){
 
     for(int i = 0; i < FD_SIZE; i++){
         p->client_fd[i] = -1;
-        p->buffer_offset[i] = -1;
-        p->cur_allocated[i] = 0;
         p->received_headers[i] = -1;
         p->type[i] = INVALID_CLIENT;
         p->context[i] = NULL;
@@ -40,9 +38,8 @@ void add_client_to_pool(int client_sockfd, char *remote_ip, client_type type, SS
             p->client_fd[i] = client_sockfd;
             p->type[i] = type;
             p->context[i] = context;
-            p->client_buffer[i] = (char *)calloc(BUF_SIZE, sizeof(char));
-            p->buffer_offset[i] = 0;
-            p->cur_allocated[i] = sizeof(char) * BUF_SIZE;
+            p->client_dbuf[i] = (dynamic_storage *)malloc(sizeof(dynamic_storage));
+            init_dynamic_storage(p->client_dbuf[i], BUF_SIZE);
             if (i > p->max_index) p->max_index = i;
             if (p->fd_max < client_sockfd) p->fd_max = client_sockfd;
             break;
@@ -64,33 +61,8 @@ void clear_client_by_index(int client_fd, int idx){
     close(client_fd);
     FD_CLR(client_fd, &p->master);
     p->client_fd[idx] = -1;
-    free(p->client_buffer[idx]);
-    p->cur_allocated[idx] = 0;
     p->received_headers[idx] = -1;
-    p->buffer_offset[idx] = -1;
-}
-
-size_t get_buffer_offset(int client_fd){
-
-    int i;
-    for(i = 0; i < FD_SIZE; i++){
-        if(p->client_fd[i] == client_fd){
-            return p->buffer_offset[i];
-        }
-    }
-    fprintf(stderr, "don't have this client %d\n", client_fd);
-    return -1;
-}
-
-size_t get_cur_allocated(int client_fd){
-    int i;
-    for(i = 0; i < FD_SIZE; i++){
-        if(p->client_fd[i] == client_fd){
-            return p->cur_allocated[i];
-        }
-    }
-    fprintf(stderr,"dont't have this client %d\n", client_fd);
-    return -1;
+    free_dynamic_storage(p->client_dbuf[idx]);
 }
 
 void set_received_headers(int client_fd){
@@ -105,28 +77,13 @@ void set_received_headers(int client_fd){
 
 char* append_request(int client_fd, char *buf, size_t len){
     int i;
-    int extension = 0;
-    int cur_offset = 0;
-    int cur_allocated = 0;
     for (i = 0; i <= p->max_index && p->n_ready > 0 ; i++){
         if(p->client_fd[i] == client_fd){
-            cur_offset = p->buffer_offset[i];
-            cur_allocated = p->cur_allocated[i];
-            if(cur_offset + len > cur_allocated){//we need to dynamic allocate buffer
-                while(cur_offset + len -cur_allocated > extension) extension += BUF_SIZE;
-
-                p->client_buffer[i] = (char *)realloc(p->client_buffer[i], extension*sizeof(char));
-                if(p->client_buffer[i] == NULL){
-                    fprintf(stderr, "can't allocate memory\n");
-                }
-                p->cur_allocated[i] = cur_allocated + extension;
-            }
-            strncpy(p->client_buffer[i] + cur_offset, buf, len);
-            p->buffer_offset[i] = cur_offset + len;
+            append_storage_dbuf(p->client_dbuf[i], buf, len);
             break;
         }
     }
-    return p->client_buffer[i];
+    return p->client_dbuf[i]->buffer;
 }
 
 
@@ -153,7 +110,7 @@ void handle_client(){
                 recv_buf = append_request(fd, buf, readret);
 
                 //now to check this buf have complete request str
-                buf_len = get_buffer_offset(fd);
+                buf_len = p->client_dbuf[i]->offset;
                 if((!end_with_crlf(recv_buf)) && buf_len < 2*BUF_SIZE) continue;//it is not a complete request,we need more message;
                 set_received_headers(fd);
                 http_respond = handle_the_client(fd, recv_buf, buf_len);
@@ -174,7 +131,7 @@ void handle_client(){
 }
 
 int handle_the_client(int client_fd, char *client_buffer, int len){
-    int return_value = 1; //indicate 
+    int return_value = 1; //indicate
     int last_conn = 0;
     Request *request = parse(client_buffer, len, client_fd);
     log_info("print request\n");

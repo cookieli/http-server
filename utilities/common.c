@@ -156,6 +156,7 @@ void append_storage_dbuf(dynamic_storage *s, char *buf, ssize_t len){
         s->capacity += extension;
     }
     memcpy(s->buffer+s->offset, buf, len);
+    s->offset += len;
 }
 
 void reset_dynamic_storage(dynamic_storage *s){
