@@ -17,25 +17,25 @@ lisod:$(OBJ)
 	$(CC) -o $@ $^ -lssl
 
 $(OBJ_DIR)/y.tab.o: $(PARSE_DIR)/y.tab.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 
 $(OBJ_DIR)/lex.yy.o: $(PARSE_DIR)/lex.yy.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 
 $(OBJ_DIR)/parse.o: $(PARSE_DIR)/parse.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 
 $(OBJ_DIR)/logging.o: $(LOG_DIR)/logging.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 
 $(OBJ_DIR)/common.o: $(UTILITIES_DIR)/common.c $(UTILITIES_DIR)/common.h -lssl
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 $(OBJ_DIR)/handle_client.o: $(HANDLER_DIR)/handle_client.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
-$(OBJ_DIR)/response.o: $(HANDLER_DIR)/response.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
+$(OBJ_DIR)/response.o: $(HANDLER_DIR)/response.c $(HANDLER_DIR)/response.h
+	$(CC) $(FLAGS) -c $< -o $@
 $(OBJ_DIR)/liso_server.o: lisod.c $(DEPS)
-	$(CC) $(FLAGS) -c $< -o $@ $(CFLAGS)
+	$(CC) $(FLAGS) -c $< -o $@
 
 $(PARSE_DIR)/lex.yy.c: $(PARSE_DIR)/lexer.l
 	flex -o $@ $^

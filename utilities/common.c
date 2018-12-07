@@ -120,6 +120,8 @@ int accept_connection(int listen_fd, char *remote_ip){
     return client_sock;
 }
 
+/* file api*/
+
 int is_dir(const char *path){
     struct stat statbuf;
     if(stat(path, &statbuf) != 0)   return 0;
@@ -136,4 +138,42 @@ char *get_extension(const char *filename){
     char *ext = strrchr(filename,'.');
     if(!ext)    exit(-1);
     return ext;
+}
+/* file API*/
+
+void init_dynamic_storage(dynamic_storage *s, size_t capacity){
+    s->buffer = (char *)malloc(sizeof(char) * capacity);
+    memset(s->buffer, 0 ,capacity);
+    s->offset = 0;
+    s->capacity = capacity;
+}
+
+void append_storage_dbuf(dynamic_storage *s, char *buf, ssize_t len){
+    if(s->offset + len > s->capacity){
+        int extension = s->capacity;
+        while(s->offset + len > s->capacity + extension) extension *= 2;
+        s->buffer = (char *)realloc(s->buffer, extension * sizeof(char));
+        s->capacity += extension;
+    }
+    memcpy(s->buffer+s->offset, buf, len);
+}
+
+void reset_dynamic_storage(dynamic_storage *s){
+    memset(s->buffer, 0, s->capacity);
+    s->offset = 0;
+}
+
+void free_dynamic_storage(dynamic_storage *s){
+    free(s->buffer);
+    free(s);
+}
+
+void print_dynamic_storage(dynamic_storage *s){
+    if(s == NULL){
+        fprintf(stderr, "this dynamic storage is null\n");
+        return;
+    }
+    fprintf(stderr, "dynamic capacity: %ld\n", s->capacity);
+    fprintf(stderr, "dynamic offset: %ld\n", s->offset);
+    fprintf(stderr, "dynamic buffer: %s\n", s->buffer);
 }

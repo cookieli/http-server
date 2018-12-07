@@ -24,7 +24,6 @@ typedef struct {
     size_t cur_allocated[FD_SIZE];
     int received_headers[FD_SIZE];
     char *remote_addr[FD_SIZE];
-
     fd_set master;
     fd_set read_fds;
     fd_set write_fds;
