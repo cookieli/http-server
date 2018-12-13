@@ -1,10 +1,11 @@
-#include "handle_client.h"
+//#include "handle_client.h"
 //#include "../log/logging.h"
 #include "response.h"
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+//#include <openssl/ssl.h>
 
 client_pool pool;
 client_pool *p = &pool;
@@ -113,7 +114,7 @@ void handle_client(){
                 buf_len = p->client_dbuf[i]->offset;
                 if((!end_with_crlf(recv_buf)) && buf_len < 2*BUF_SIZE) continue;//it is not a complete request,we need more message;
                 set_received_headers(fd);
-                http_respond = handle_the_client(fd, recv_buf, buf_len);
+                http_respond = handle_the_client(fd, recv_buf, buf_len, p->type[i], p->context[i]);
                 if(http_respond == 0){
                     clear_client_by_index(fd, i);
                 }
@@ -123,20 +124,20 @@ void handle_client(){
                 } else {
                     if(errno == EAGAIN || errno == EWOULDBLOCK){
                         clear_client_by_index(fd, i);
-                    }else if(errno = EINTR)  continue;
+                    }else if(errno == EINTR)  continue;
                 }
             }
         }
     }
 }
 
-int handle_the_client(int client_fd, char *client_buffer, int len){
-    int return_value = 1; //indicate
-    int last_conn = 0;
+int handle_the_client(int client_fd, char *client_buffer, int len, client_type type, SSL *context){
+    int return_value = 1; //1 indicate persist, 0 indicate close
+    int last_conn = 0;//0 idicate not close, 1 inidicate close
     Request *request = parse(client_buffer, len, client_fd);
     log_info("print request\n");
     if(request == NULL){
-        send_error("400", "Bad Request", client_fd);
+        send_error("400", "Bad Request", client_fd, type, context);
         return 0;
     }
     if(request != NULL){
@@ -144,20 +145,20 @@ int handle_the_client(int client_fd, char *client_buffer, int len){
         last_conn = check_client_connection(request);
         if(last_conn == 1)  return_value = 0;
         if(check_HTTP_version(request) == -1){
-            send_error("505", "HTTP version not supported", client_fd);
+            send_error("505", "HTTP version not supported", client_fd, type, context);
             return 0;
         }
         if(strcmp(request->http_method, "GET") == 0){
-            do_GET(request, client_fd, last_conn);
+            do_GET(request, client_fd, last_conn, type, context);
             free_request(request);
         }else if(strcmp(request->http_method, "HEAD") == 0){
-            do_HEAD(request, client_fd, last_conn);
+            do_HEAD(request, client_fd, last_conn, type, context);
             free_request(request);
         }else if(strcmp(request->http_method, "POST") == 0){
-            do_POST(request, client_fd, last_conn);
+            do_POST(request, client_fd, last_conn, type, context);
             free_request(request);
         }else {
-            send_error("501", "Not Implemented", client_fd);
+            send_error("501", "Not Implemented", client_fd, type, context);
             free_request(request);
         }
     }

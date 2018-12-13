@@ -30,9 +30,9 @@ $(OBJ_DIR)/logging.o: $(LOG_DIR)/logging.c $(DEPS)
 
 $(OBJ_DIR)/common.o: $(UTILITIES_DIR)/common.c $(UTILITIES_DIR)/common.h -lssl
 	$(CC) $(FLAGS) -c $< -o $@
-$(OBJ_DIR)/handle_client.o: $(HANDLER_DIR)/handle_client.c $(DEPS)
+$(OBJ_DIR)/handle_client.o: $(HANDLER_DIR)/handle_client.c $(DEPS) -lssl
 	$(CC) $(FLAGS) -c $< -o $@
-$(OBJ_DIR)/response.o: $(HANDLER_DIR)/response.c $(HANDLER_DIR)/response.h
+$(OBJ_DIR)/response.o: $(HANDLER_DIR)/response.c $(HANDLER_DIR)/response.h -lssl
 	$(CC) $(FLAGS) -c $< -o $@
 $(OBJ_DIR)/liso_server.o: lisod.c $(DEPS)
 	$(CC) $(FLAGS) -c $< -o $@

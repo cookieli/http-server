@@ -51,7 +51,7 @@ void clear_client_by_index(int client_fd, int idx);
 void set_received_headers(int client_fd);
 char *append_request(int client_fd, char *buf, size_t len);
 void handle_client();
-int handle_the_client(int client_fd, char *client_buffer, int len);
+int handle_the_client(int client_fd, char *client_buffer, int len, client_type type, SSL *context);
 void free_request(Request *request);
 int check_client_connection(Request *request);
 void get_header_value(Request *request, char *header, char *holder);
