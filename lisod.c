@@ -63,7 +63,8 @@ int main(int argc, char *argv[]){
     //to prepare select's based server
     while(1){
         pool.read_fds = pool.master;
-        pool.n_ready = select(pool.fd_max + 1, &pool.read_fds, NULL, NULL, NULL);
+        pool.write_fds = pool.master;
+        pool.n_ready = select(pool.fd_max + 1, &pool.read_fds, &pool.write_fds, NULL, NULL);
 
         if(pool.n_ready <= 0){
             if(pool.n_ready < 0){

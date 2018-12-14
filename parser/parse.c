@@ -2,7 +2,7 @@
 
 /**
 * Given a char buffer returns the parsed request headers
-finite state machine
+finite state machin
 */
 Request * parse(char *buffer, int size, int socketFd) {
   //Differant states in the state machine
@@ -18,7 +18,7 @@ Request * parse(char *buffer, int size, int socketFd) {
 
 	state = STATE_START;
 	while (state != STATE_CRLFCRLF) {
-		char expected = 0;
+        char expected = 0;
 
 		if (i == size)
 			break;

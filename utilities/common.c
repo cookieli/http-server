@@ -145,15 +145,16 @@ void init_dynamic_storage(dynamic_storage *s, size_t capacity){
     s->buffer = (char *)malloc(sizeof(char) * capacity);
     memset(s->buffer, 0 ,capacity);
     s->offset = 0;
+    s->send_offset = 0;
     s->capacity = capacity;
 }
 
 void append_storage_dbuf(dynamic_storage *s, char *buf, ssize_t len){
     if(s->offset + len > s->capacity){
         int extension = s->capacity;
-        while(s->offset + len > s->capacity + extension) extension *= 2;
-        s->buffer = (char *)realloc(s->buffer, extension * sizeof(char));
-        s->capacity += extension;
+        while(s->offset + len > extension) extension *= 2;
+        s->buffer = (char *)realloc(s->buffer, extension);
+        s->capacity = extension;
     }
     memcpy(s->buffer+s->offset, buf, len);
     s->offset += len;
@@ -162,6 +163,7 @@ void append_storage_dbuf(dynamic_storage *s, char *buf, ssize_t len){
 void reset_dynamic_storage(dynamic_storage *s){
     memset(s->buffer, 0, s->capacity);
     s->offset = 0;
+    s->send_offset = 0;
 }
 
 void free_dynamic_storage(dynamic_storage *s){

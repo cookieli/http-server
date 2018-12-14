@@ -82,13 +82,15 @@ void reply_to_client_msg_body(char *msg_body, long length, int fd, client_type t
 }
 
 
-void send_error(char *code, char *reason, int fd, client_type type, SSL *context){
+void send_error(char *code, char *reason, dynamic_storage *dbuf){
     char *reply = construct_error(code, reason);
-    reply_to_client_header(reply, fd, type, context);
+    //reply_to_client_header(reply, fd, type, context);
+    append_storage_dbuf(dbuf, reply, strlen(reply));
 }
-void do_GET(Request *req, int fd, int last_conn, client_type type, SSL *context){
+
+void do_GET(Request *req, int last_conn, dynamic_storage *dbuf){
     if(check_HTTP_version(req) == -1){
-        send_error("505", "HTTP version not supported", fd, type, context);
+        send_error("505", "HTTP version not supported",dbuf);
         return;
     }
     char full_path[BUF_SIZE];
@@ -100,7 +102,8 @@ void do_GET(Request *req, int fd, int last_conn, client_type type, SSL *context)
         strcat(full_path, "/index.html");
     }
     if(!is_regular(full_path)){
-        send_error("404","Not Found", fd, type, context);
+        send_error("404","Not Found", dbuf);
+        return;
     }
     char *ext = get_extension(full_path);
     char *MIME_type = find_MIME(ext);
@@ -125,9 +128,11 @@ void do_GET(Request *req, int fd, int last_conn, client_type type, SSL *context)
     end_header(reply);
     //construct_msg_body(reply, message_body);
     log_info(reply);
-    reply_to_client_header(reply, fd, type, context);
-    reply_to_client_msg_body(message_body, length, fd, type, context);
-    fprintf(stderr, "has already send %d http response\n", fd);
+    //reply_to_client_header(reply, fd, type, context);
+    //reply_to_client_msg_body(message_body, length, fd, type, context);
+    append_storage_dbuf(dbuf, reply, strlen(reply));
+    append_storage_dbuf(dbuf, message_body, length);
+    fprintf(stderr, "has already send http response\n");
     free(message_body);
     free(reply);
     //free(ext);
@@ -136,9 +141,10 @@ void do_GET(Request *req, int fd, int last_conn, client_type type, SSL *context)
     free(cur_time);
 }
 
-void do_HEAD(Request *req, int fd, int last_conn, client_type type, SSL *context){
+void do_HEAD(Request *req, int last_conn, dynamic_storage *dbuf){
     if(check_HTTP_version(req) == -1){
-        send_error("505", "HTTP version not supported", fd, type, context);
+        send_error("505", "HTTP version not supported", dbuf);
+        return;
     }
     char full_path[BUF_SIZE];
     char *message_body;
@@ -149,7 +155,8 @@ void do_HEAD(Request *req, int fd, int last_conn, client_type type, SSL *context
         strcat(full_path, "/index.html");
     }
     if(!is_regular(full_path)){
-        send_error("404","Not Found", fd, type, context);
+        send_error("404","Not Found", dbuf);
+        return;
     }
     char *ext = get_extension(full_path);
     char *MIME_type = find_MIME(ext);
@@ -170,29 +177,33 @@ void do_HEAD(Request *req, int fd, int last_conn, client_type type, SSL *context
         construct_header(reply, "connection", "Keep-Alive");
     }
     end_header(reply);
-    reply_to_client_header(reply, fd, type, context);
+    //reply_to_client_header(reply, fd, type, context);
+    append_storage_dbuf(dbuf, reply, strlen(reply));
     free(reply);
     //free(ext);
     //free(MIME_type);
     free(datestring);
     free(cur_time);
 }
-void do_POST(Request *req, int fd, int last_conn, client_type type, SSL *context){
+void do_POST(Request *req, int last_conn, dynamic_storage *dbuf){
     if(check_HTTP_version(req) == -1){
-        send_error("505", "HTTP version not supported", fd, type, context);
+        send_error("505", "HTTP version not supported", dbuf);
+        return;
     }
     char content_length[32];
     memset(content_length, 0, sizeof(content_length));
     get_header_value(req, "Content-Length", content_length);
     if(strlen(content_length) == 0){
-        send_error("411", "Length-Required", fd, type, context);
+        send_error("411", "Length-Required", dbuf);
+        return;
     }
     char *reply = (char *)calloc(BUF_SIZE, sizeof(char));
     construct_status_line(reply, "200", "OK");
     construct_content_length(reply, 0);
     construct_header(reply, "connection", "close");
     end_header(reply);
-    reply_to_client_header(reply, fd, type, context);
+    //reply_to_client_header(reply, fd, type, context);
+    append_storage_dbuf(dbuf, reply, strlen(reply));
     free(reply);
 }
 

@@ -9,8 +9,9 @@
 #include <openssl/ssl.h>
 typedef struct {
     char *buffer;
-    size_t offset;
+    size_t offset; //from where to insert
     size_t capacity;
+    size_t send_offset;// from where to send message
 } dynamic_storage;
 
 void create_dictionary(char *, mode_t);

@@ -10,6 +10,12 @@ typedef enum client_type{
     HTTPS_CLIENT
 } client_type;
 
+typedef enum client_state{
+    INVALID,
+    READY_FOR_READ,
+    READY_FOR_WRITE
+}client_state;
+
 typedef struct {
     int listen_fd;
     int ssl_sockfd;
@@ -23,6 +29,8 @@ typedef struct {
     dynamic_storage *back_up_buffer[FD_SIZE];
     int received_headers[FD_SIZE];
     char *remote_addr[FD_SIZE];
+    client_state state[FD_SIZE];
+    int should_be_close[FD_SIZE];
     fd_set master;
     fd_set read_fds;
     fd_set write_fds;
@@ -32,14 +40,9 @@ typedef enum http_process_state{
     ERROR,
     CLOSE,
     PERSIST,
-    PENDING_REQUEST
+    PENDING_REQUEST,
+    NOT_ENOUGH_DATA
 } http_process_state;
-
-typedef enum client_state{
-    INVALID,
-    READY_FOR_READ,
-    READY_FOR_WRITE
-} client_state;
 
 extern client_pool pool;
 
@@ -49,9 +52,16 @@ void init_pool(int listen_fd, int ssl_sockfd);
 void add_client_to_pool(int client_sockfd, char *remote_ip, client_type type, SSL *context);
 void clear_client_by_index(int client_fd, int idx);
 void set_received_headers(int client_fd);
-char *append_request(int client_fd, char *buf, size_t len);
 void handle_client();
-int handle_the_client(int client_fd, char *client_buffer, int len, client_type type, SSL *context);
+http_process_state handle_corresponding_client(int client_fd, dynamic_storage *client_dbuf, size_t header_len, dynamic_storage *pending_request);
+
+
 void free_request(Request *request);
 int check_client_connection(Request *request);
-void get_header_value(Request *request, char *header, char *holder);
+void get_header_value(Request *request, char *header, char* holder);
+char* get_content_length(Request *req);
+
+size_t get_client_buffer_offset(int client_fd);
+size_t handle_receive_headers(int client_fd, char *client_buffer);
+size_t min(size_t a, size_t b);
+void reset_client_dbuf_state_by_idx(int idx);
