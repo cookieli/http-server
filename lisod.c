@@ -1,6 +1,6 @@
 #include "log/logging.h"
 //#include "utilities/common.h"
-#include "handler/handle_client.h"
+#include "handler/response.h"
 #include "lisod.h"
 #include <fcntl.h>
 #include <signal.h>
@@ -9,10 +9,14 @@
 //char log_dir[BUF_SIZE] = "/home/lzx/computer_network/liso_server/log/";
 //f
 
+int port;
+int https_port;
+
 int logging_fd;
 char *logging_path;
 char *WWW_FOLDER;
 char *lock_file;
+char *CGI_script;
 char *private_key_file;
 char *certificate_file;
 client_pool pool;
@@ -25,25 +29,26 @@ int main(int argc, char *argv[]){
     SSL_CTX *ssl_context = NULL;
     int client_sockfd;
 
-    if(argc < 8){
+    if(argc < 9){
         fprintf(stderr, USAGE, argv[0]);
         exit(-1);
     }
 
-
-    int port = atoi(argv[1]);
-    int https_port = atoi(argv[2]);
+    port = atoi(argv[1]);
+    https_port = atoi(argv[2]);
     logging_path = argv[3];
     //init_logging();x
     lock_file = argv[4];
     WWW_FOLDER = argv[5];
-    private_key_file = argv[6];
-    certificate_file = argv[7];
+    CGI_script = argv[6];
+    private_key_file = argv[7];
+    certificate_file = argv[8];
     #ifdef DEBUG_VERBOSE
     //daemonize();
     #endif
     create_dictionary(WWW_FOLDER, S_IRWXU|S_IRWXG | S_IRWXO|S_IROTH|S_IXOTH);
     //then create socket, bind, listen,
+    init_cgi_pool();
     init_logging();
     ssl_init(&ssl_context, private_key_file, certificate_file);
     if((sockfd = create_server_sock(port)) < 0){

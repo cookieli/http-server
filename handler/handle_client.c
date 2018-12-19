@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 //#include <openssl/ssl.h>
+#include "../lisod.h"
+int port;
+int https_port;
 
 client_pool pool;
 client_pool *p = &pool;
@@ -32,6 +35,7 @@ void init_pool(int listen_fd, int ssl_sockfd){
         p->should_be_close[i] = 0;
         p->client_dbuf[i] = NULL;
         p->back_up_buffer[i] = NULL;
+        p->cgi_client[i] = -1;
     }
 }
 
@@ -60,6 +64,54 @@ void add_client_to_pool(int client_sockfd, char *remote_ip, client_type type, SS
     //if(p->fd_max < client_sockfd)  p->fd_max = client_sockfd;
 }
 
+void add_cgi_pipe_to_client_pool(int pipe_fd, int pipe_client, client_state state){
+    int i;
+    for(i = 0; i < FD_SIZE; i++){
+        if(p->client_fd[i] == -1){
+            FD_SET(pipe_fd, &p->master);
+            
+            p->client_fd[i] = pipe_fd;
+            p->state[i] = state;
+
+            if(i > p->max_index)  p->max_index = i;
+            if(p->fd_max < pipe_fd) p->fd_max = pipe_fd;
+
+            p->cgi_client[i] = pipe_client;
+            break;
+        }
+    }
+    if(i == FD_SIZE){
+        fprintf(stderr, "can't have slot for pipe_fd");
+    }
+}
+
+void clear_cgi_pipe_from_pool(int client_fd){
+    int i =0;
+    for(; i < FD_SIZE; i++){
+        if(p->cgi_client[i] == client_fd){
+            clear_client_by_client_fd(p->client_fd[i]);
+        }
+    }
+}
+
+int get_client_index(int client_fd){
+    int i;
+    for(i = 0; i < FD_SIZE; i++){
+        if(p->client_fd[i] == client_fd)
+            return  i;
+    }
+    fprintf(stderr, "can't find client_fd %d", client_fd);
+    return -1;
+}
+void clear_client_by_client_fd(int client_fd){
+    int i =0 ;
+    for(; i < FD_SIZE; i++){
+        if(p->client_fd[i] == client_fd){
+            clear_client_by_index(client_fd, i);
+            break;
+        }
+    }
+}
 void clear_client_by_index(int client_fd, int idx){
     if(idx > p->max_index){
         fprintf(stderr, "pool don't have %dth client", idx);
@@ -73,7 +125,6 @@ void clear_client_by_index(int client_fd, int idx){
     p->state[idx] = INVALID;
     p->should_be_close[idx] = 0;
     p->type[idx] = INVALID_CLIENT;
-    p->context[idx] = NULL;
     if(p->client_dbuf[idx] != NULL){
         free_dynamic_storage(p->client_dbuf[idx]);
     }
@@ -82,6 +133,11 @@ void clear_client_by_index(int client_fd, int idx){
     }
     p->client_dbuf[idx] = NULL;
     p->back_up_buffer[idx] = NULL;
+
+    if(p->type[idx] == HTTPS_CLIENT && p->context[idx] != NULL){
+        SSL_free(p->context[idx]);
+    }
+    p->context[idx] = NULL;
 }
 
 void set_received_headers(int client_fd){
@@ -109,6 +165,7 @@ void get_header_value(Request *request, char *header, char *holder){
         }
     }
 }
+
 
 char* get_content_length(Request *req){
     char *content_length;
@@ -140,6 +197,15 @@ size_t get_client_buffer_offset(int client_fd){
     }
     fprintf(stderr, "can't find client fd");
     return -1;
+}
+dynamic_storage *get_client_dbuf(int client_fd){
+    int i;
+    for(i = 0; i <=p->max_index; i++){
+        if(client_fd == p->client_fd[i] && p->client_dbuf[i] != NULL){
+            return p->client_dbuf[i];
+        }
+    }
+    return NULL;
 }
 
 size_t handle_receive_headers(int client_fd, char *client_buffer){
@@ -194,13 +260,19 @@ void handle_client(){
             }
             dynamic_storage *pending_request = (dynamic_storage *)malloc(sizeof(dynamic_storage));
             init_dynamic_storage(pending_request, BUF_SIZE);
-            result = handle_corresponding_client(fd, p->client_dbuf[i], header_len, pending_request);
+
+            host_and_port *hap = (host_and_port *)malloc(sizeof(host_and_port));
+            hap->host = p->remote_addr[i];
+            hap->port = (p->type[i] == HTTPS_CLIENT)? https_port:port;
+            result = handle_corresponding_client(fd, p->client_dbuf[i], header_len, pending_request, hap);
+            free(hap);
             if(pending_request->offset == 0){
                 free_dynamic_storage(pending_request);
                 p->back_up_buffer[i] = NULL;
             } else{
                 p->back_up_buffer[i] = pending_request;
             }
+            CGI_executer *exe;
             switch(result){
             case(ERROR):
                 send_error("500", "Internal Server Error", p->client_dbuf[i]);
@@ -212,6 +284,26 @@ void handle_client(){
                 break;
             case(NOT_ENOUGH_DATA):
                 continue;
+            case(CGI_FOR_WRITE_READY_CLOSE):
+                p->should_be_close[i] = 1;
+            case(CGI_FOR_WRITE_READY):
+                p->state[i] = WAITING_FOR_CGI;
+                exe = get_executer_from_pool_by_client(p->client_fd[i]);
+                if(exe == NULL){
+                    fprintf(stderr, "don't have this executer\n");
+                }
+                add_cgi_pipe_to_client_pool(exe->stdin_pipe[1], p->client_fd[i], CGI_FOR_WRITE_PIPE);
+                break;
+            case(CGI_FOR_READ_READY_CLOSE):
+                p->should_be_close[i] = 1;
+            case(CGI_FOR_READ_READY):
+                p->state[i] = WAITING_FOR_CGI;
+                exe = get_executer_from_pool_by_client(p->client_fd[i]);
+                if(exe == NULL){
+                    fprintf(stderr, "don't have this executer for read\n");
+                }
+                add_cgi_pipe_to_client_pool(exe->stdout_pipe[0], p->client_fd[i], CGI_FOR_READ_PIPE);
+                break;
             default:
                 break;
             }
@@ -227,7 +319,7 @@ void handle_client(){
             } else {
                 send_bytes = SSL_write(p->context[i], storage_dbuf->buffer+storage_dbuf->send_offset, send_len);
             }
-            fprintf(stderr, "send granularity: %ld\n", send_granularity);
+            //fprintf(stderr, "send granularity: %ld\n", send_granularity);
             fprintf(stderr, "send bytes: %ld\n", send_bytes);
             storage_dbuf->send_offset += send_bytes;
             if(storage_dbuf->send_offset >= storage_dbuf->offset){
@@ -241,8 +333,58 @@ void handle_client(){
             }
             // p->n_ready--;
         }
+
+        if(FD_ISSET(fd, &p->write_fds) && p->state[i] == CGI_FOR_WRITE_PIPE){
+            fprintf(stderr, "server need to write post_body to cgi_pipe\n");
+            CGI_executer *exe = get_executer_from_pool_by_client(p->client_fd[i]);
+            if(exe == NULL){
+                fprintf(stderr, "executer doesn't exist\n");
+            }
+            dynamic_storage *storage_dbuf = p->client_dbuf[i];
+            size_t send_granularity = BUF_SIZE;
+            size_t send_len = min(send_granularity, storage_dbuf->offset - storage_dbuf->send_offset);
+            size_t send_bytes = write(exe->stdin_pipe[1], storage_dbuf->buffer+ storage_dbuf->send_offset, send_len);
+            fprintf(stderr, "CGI send bytes: %ld\n", send_bytes);
+            storage_dbuf->send_offset += send_bytes;
+
+            if(storage_dbuf->send_offset >= storage_dbuf->offset){
+                
+                reset_dynamic_storage(storage_dbuf);
+                p->state[i] = CGI_FOR_READ_PIPE;
+
+                int pipe_client = p->cgi_client[i];
+                clear_cgi_pipe_from_pool(pipe_client);
+                fprintf(stderr, "clear write pipe from client_pool\n");
+                fprintf(stderr, "add read pipe to client_pool");
+                add_cgi_pipe_to_client_pool(exe->stdout_pipe[0], pipe_client, CGI_FOR_READ_PIPE);
+            }
+        }
+
+        if(FD_ISSET(fd, &p->read_fds) && p->state[i] == CGI_FOR_READ_PIPE){
+            fprintf(stderr, "server read message from cgi_pipe and prepare for write to client");
+            char cgi_buf[BUF_SIZE]; memset(cgi_buf, 0, BUF_SIZE);
+            int readret = 0;
+            CGI_executer *exe = get_executer_from_pool_by_client(p->client_fd[i]);
+            readret = read(exe->stdout_pipe[0], buf, BUF_SIZE);
+            if(readret < 0){
+                fprintf(stderr, "can't read from pipe\n");
+            }
+            dynamic_storage *client_dbuf = get_client_dbuf(p->cgi_client[i]);
+            if(readret > 0){
+                append_storage_dbuf(client_dbuf, cgi_buf, readret);
+            }
+            if(readret == 0){
+                fprintf(stderr, "have read all messages from buf\n");
+                fprintf(stderr, "message: %s\n", client_dbuf->buffer);
+                p->state[get_client_index(p->cgi_client[i])] = READY_FOR_WRITE;
+                clear_cgi_pipe_from_pool(exe->client_fd);
+                clear_cgi_executer_from_pool_by_client(exe->client_fd);
+                fprintf(stderr, "clear executers from cgi_pool....\n");
+            }
+        }
     }
 }
+
 
 size_t min(size_t a, size_t b){
     if (a <= b)  return a;
@@ -255,7 +397,7 @@ void reset_client_dbuf_state_by_idx(int idx){
     }
 }
 
-http_process_state handle_corresponding_client(int client_fd, dynamic_storage *client_dbuf, size_t header_len, dynamic_storage *pending_request){
+http_process_state handle_corresponding_client(int client_fd, dynamic_storage *client_dbuf, size_t header_len, dynamic_storage *pending_request, host_and_port *hap){
     http_process_state return_value = PERSIST;
     int last_conn = 0;
     Request *request = NULL;
@@ -307,19 +449,51 @@ http_process_state handle_corresponding_client(int client_fd, dynamic_storage *c
             free_request(request);
             return CLOSE;
         }
-
-        if(!strcmp(request->http_method, "GET")){
-            reset_dynamic_storage(client_dbuf);
-            do_GET(request, last_conn, client_dbuf);
-        }else if(!strcmp(request->http_method, "HEAD")){
-            reset_dynamic_storage(client_dbuf);
-            do_HEAD(request, last_conn, client_dbuf);
-        }else if(!strcmp(request->http_method, "POST")){
-            reset_dynamic_storage(client_dbuf);
-            do_POST(request, last_conn, client_dbuf);
+        
+        if(is_dynamic_request(request)){
+            fprintf(stderr, "it is dynamic request\n");
+            int content_length = atoi(get_content_length(request));
+            CGI_param *pa = init_cgi_param();
+            build_cgi_param(pa, request, hap);
+            if(content_length > 0){
+                reset_dynamic_storage(client_dbuf);
+                //CGI_param *pa = init_cgi_param();
+                //build_cgi_param(pa, request, *hap);
+                handle_dynamic_request(pa, client_fd, client_dbuf->buffer + header_len, content_length);
+                if(last_conn == 0)      return CGI_FOR_WRITE_READY;
+                else                    return CGI_FOR_WRITE_READY_CLOSE;
+            }
+            handle_dynamic_request(pa, client_fd, NULL, 0);
+            if(last_conn == 0)     return CGI_FOR_READ_READY;
+            else                   return CGI_FOR_READ_READY_CLOSE;
+        }else{
+            fprintf(stderr, "it is static request\n");
+            if(!strcmp(request->http_method, "GET")){
+                reset_dynamic_storage(client_dbuf);
+                do_GET(request, last_conn, client_dbuf);
+            }else if(!strcmp(request->http_method, "HEAD")){
+                reset_dynamic_storage(client_dbuf);
+                do_HEAD(request, last_conn, client_dbuf);
+            }else if(!strcmp(request->http_method, "POST")){
+                reset_dynamic_storage(client_dbuf);
+                do_POST(request, last_conn, client_dbuf);
+            }
+            free_request(request);
+            return return_value;
         }
-        free_request(request);
-        return return_value;
     }
     return return_value;
+}
+
+
+int is_dynamic_request(Request *request){
+    char *prefix = "/cgi/";
+    char uri_prefix[8]; memset(uri_prefix, 0, 8);
+    if(strlen(request->http_uri) >= strlen(prefix)){
+        memcpy(uri_prefix, request->http_uri, strlen(prefix));
+        if(!strcmp(uri_prefix, prefix)){
+            return 1;
+        }
+    }
+    return 0;
 }

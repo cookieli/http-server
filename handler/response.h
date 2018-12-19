@@ -32,22 +32,39 @@ typedef struct
 typedef struct{
     char *filename;
     char *argv[CGI_ARGS_LEN];
-    char *envp[CGI_ENVP_INFO_MAXLEN];
-} cgi_param;
+    char *envp[CGI_ENVP_LEN];
+} CGI_param;
 
 
 
 
 typedef struct{
     int client_fd;
-    int stdin_pipe[2];
-    int stdout_pipe[2];
-    dynamic_storage *cgi_buf;
-    cgi_param *cgi_parameter;
-} cgi_executer;
+    //for pipe 0 can be read from 1 can be writen to
+    int stdin_pipe[2];//parent -> stdin_pipe[1]-stdin_pipe[0]-->child
+    int stdout_pipe[2];//child ->stdout_pipe[1] ->stdout_pipe[0]-->parent
+    dynamic_storage *cgi_dbuf;//it is where child's stdin read from
+    CGI_param *cgi_parameter;
+} CGI_executer;
 
 typedef struct{
-    cgi_executer *executers[FD_SIZE];
-} cgi_pool;
+    CGI_executer *executers[FD_SIZE];
+} CGI_pool;
 
-extern cgi_pool *cgi;
+extern CGI_pool *cgi_pool;
+
+CGI_param* init_cgi_param();
+void free_cgi_param(CGI_param *pa);
+void build_cgi_param(CGI_param *pa, Request *request, host_and_port *hap);
+void set_envp_header_with_str(CGI_param *pa, char *envp_var, char *value, int index);
+void set_envp_header_with_request(CGI_param *pa, Request *request, char *header, char *envp_var, int index);
+char* new_string(char *str);
+CGI_executer* init_cgi_executer(CGI_param *pa, int client_fd);
+void free_cgi_executer(CGI_executer *exe);
+void init_cgi_pool();
+void free_cgi_pool();
+void add_cgi_executer_to_pool(CGI_executer *exe);
+CGI_executer* get_executer_from_pool_by_client(int client_fd);
+void clear_cgi_executer_from_pool_by_client(int client_fd);
+void execve_error_handler();
+void handle_dynamic_request(CGI_param *pa, int client_fd, char *post_body, size_t content_len);
