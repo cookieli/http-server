@@ -20,7 +20,7 @@ char *CGI_script;
 char *private_key_file;
 char *certificate_file;
 client_pool pool;
-#define USAGE "liso server usage:\n%s http port https port logfile lockfile wwwfolder private key file certificate file\n "
+#define USAGE "liso server usage:\n%s http port https port logfile lockfile wwwfolder cgi_script private key file certificate file\n "
 
 // git test
 int main(int argc, char *argv[]){

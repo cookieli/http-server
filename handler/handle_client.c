@@ -13,6 +13,14 @@ int https_port;
 client_pool pool;
 client_pool *p = &pool;
 
+void reset_fd_pool_max(){
+    int i;
+    // p->fd_max = 0;
+    for(i = 0; i < FD_SIZE; i++){
+        if(p->fd_max < p->client_fd[i])   p->fd_max = p->client_fd[i];
+    }
+}
+
 void init_pool(int listen_fd, int ssl_sockfd){
     FD_ZERO(&p->master);
     FD_ZERO(&p->read_fds);
@@ -38,6 +46,7 @@ void init_pool(int listen_fd, int ssl_sockfd){
         p->cgi_client[i] = -1;
     }
 }
+
 
 void add_client_to_pool(int client_sockfd, char *remote_ip, client_type type, SSL *context){
     p->n_ready--;//because server id has been read;
@@ -69,7 +78,6 @@ void add_cgi_pipe_to_client_pool(int pipe_fd, int pipe_client, client_state stat
     for(i = 0; i < FD_SIZE; i++){
         if(p->client_fd[i] == -1){
             FD_SET(pipe_fd, &p->master);
-            
             p->client_fd[i] = pipe_fd;
             p->state[i] = state;
 
@@ -90,6 +98,8 @@ void clear_cgi_pipe_from_pool(int client_fd){
     for(; i < FD_SIZE; i++){
         if(p->cgi_client[i] == client_fd){
             clear_client_by_client_fd(p->client_fd[i]);
+            p->cgi_client[i] = -1;
+            break;
         }
     }
 }
@@ -112,6 +122,7 @@ void clear_client_by_client_fd(int client_fd){
         }
     }
 }
+
 void clear_client_by_index(int client_fd, int idx){
     if(idx > p->max_index){
         fprintf(stderr, "pool don't have %dth client", idx);
@@ -121,7 +132,10 @@ void clear_client_by_index(int client_fd, int idx){
     close(client_fd);
     FD_CLR(client_fd, &p->master);
     p->client_fd[idx] = -1;
+    p->cgi_client[idx] = -1;
+    //reset_fd_pool_max();
     p->received_headers[idx] = -1;
+    p->state[idx] = INVALID;
     p->state[idx] = INVALID;
     p->should_be_close[idx] = 0;
     p->type[idx] = INVALID_CLIENT;
@@ -230,7 +244,7 @@ void handle_client(){
         int fd = p->client_fd[i];
         if(fd == -1) continue;
 
-        if(FD_ISSET(fd, &p->read_fds) || (p->back_up_buffer[i] != NULL && p->state[i] == READY_FOR_READ)){
+        if((FD_ISSET(fd, &p->read_fds) || p->back_up_buffer[i] != NULL) && p->state[i] == READY_FOR_READ){
             if(p->back_up_buffer[i] != NULL){
                 append_storage_dbuf(p->client_dbuf[i], p->back_up_buffer[i]->buffer, p->back_up_buffer[i]->offset);
                 free(p->back_up_buffer[i]);
@@ -260,7 +274,7 @@ void handle_client(){
             }
             dynamic_storage *pending_request = (dynamic_storage *)malloc(sizeof(dynamic_storage));
             init_dynamic_storage(pending_request, BUF_SIZE);
-
+            
             host_and_port *hap = (host_and_port *)malloc(sizeof(host_and_port));
             hap->host = p->remote_addr[i];
             hap->port = (p->type[i] == HTTPS_CLIENT)? https_port:port;
@@ -287,6 +301,7 @@ void handle_client(){
             case(CGI_FOR_WRITE_READY_CLOSE):
                 p->should_be_close[i] = 1;
             case(CGI_FOR_WRITE_READY):
+                reset_dynamic_storage(p->client_dbuf[i]);
                 p->state[i] = WAITING_FOR_CGI;
                 exe = get_executer_from_pool_by_client(p->client_fd[i]);
                 if(exe == NULL){
@@ -297,6 +312,7 @@ void handle_client(){
             case(CGI_FOR_READ_READY_CLOSE):
                 p->should_be_close[i] = 1;
             case(CGI_FOR_READ_READY):
+                reset_dynamic_storage(p->client_dbuf[i]);
                 p->state[i] = WAITING_FOR_CGI;
                 exe = get_executer_from_pool_by_client(p->client_fd[i]);
                 if(exe == NULL){
@@ -336,7 +352,7 @@ void handle_client(){
 
         if(FD_ISSET(fd, &p->write_fds) && p->state[i] == CGI_FOR_WRITE_PIPE){
             fprintf(stderr, "server need to write post_body to cgi_pipe\n");
-            CGI_executer *exe = get_executer_from_pool_by_client(p->client_fd[i]);
+            CGI_executer *exe = get_executer_from_pool_by_client(p->cgi_client[i]);
             if(exe == NULL){
                 fprintf(stderr, "executer doesn't exist\n");
             }
@@ -348,36 +364,41 @@ void handle_client(){
             storage_dbuf->send_offset += send_bytes;
 
             if(storage_dbuf->send_offset >= storage_dbuf->offset){
-                
                 reset_dynamic_storage(storage_dbuf);
                 p->state[i] = CGI_FOR_READ_PIPE;
 
                 int pipe_client = p->cgi_client[i];
                 clear_cgi_pipe_from_pool(pipe_client);
                 fprintf(stderr, "clear write pipe from client_pool\n");
-                fprintf(stderr, "add read pipe to client_pool");
+                fprintf(stderr, "add read pipe to client_pool\n");
                 add_cgi_pipe_to_client_pool(exe->stdout_pipe[0], pipe_client, CGI_FOR_READ_PIPE);
             }
         }
 
         if(FD_ISSET(fd, &p->read_fds) && p->state[i] == CGI_FOR_READ_PIPE){
-            fprintf(stderr, "server read message from cgi_pipe and prepare for write to client");
+            fprintf(stderr, "server read message from cgi_pipe and prepare for write to client\n");
             char cgi_buf[BUF_SIZE]; memset(cgi_buf, 0, BUF_SIZE);
             int readret = 0;
-            CGI_executer *exe = get_executer_from_pool_by_client(p->client_fd[i]);
-            readret = read(exe->stdout_pipe[0], buf, BUF_SIZE);
+            CGI_executer *exe = get_executer_from_pool_by_client(p->cgi_client[i]);
+            readret = read(fd, cgi_buf, BUF_SIZE);
             if(readret < 0){
-                fprintf(stderr, "can't read from pipe\n");
+            fprintf(stderr, "can't read from pipe\n");
+            perror("read");
+            exit(-1);
+                // clear_cgi_pipe_from_pool(exe->client_fd);
+                // clear_cgi_executer_from_pool_by_client(exe->client_fd);
             }
             dynamic_storage *client_dbuf = get_client_dbuf(p->cgi_client[i]);
             if(readret > 0){
+                fprintf(stderr, "what read is %s\n", cgi_buf);
                 append_storage_dbuf(client_dbuf, cgi_buf, readret);
             }
             if(readret == 0){
                 fprintf(stderr, "have read all messages from buf\n");
                 fprintf(stderr, "message: %s\n", client_dbuf->buffer);
                 p->state[get_client_index(p->cgi_client[i])] = READY_FOR_WRITE;
-                clear_cgi_pipe_from_pool(exe->client_fd);
+                //clear_cgi_pipe_from_pool(exe->client_fd);
+                clear_client_by_index(fd, i);
                 clear_cgi_executer_from_pool_by_client(exe->client_fd);
                 fprintf(stderr, "clear executers from cgi_pool....\n");
             }
@@ -449,19 +470,22 @@ http_process_state handle_corresponding_client(int client_fd, dynamic_storage *c
             free_request(request);
             return CLOSE;
         }
-        
         if(is_dynamic_request(request)){
             fprintf(stderr, "it is dynamic request\n");
             int content_length = atoi(get_content_length(request));
             CGI_param *pa = init_cgi_param();
             build_cgi_param(pa, request, hap);
-            if(content_length > 0){
-                reset_dynamic_storage(client_dbuf);
-                //CGI_param *pa = init_cgi_param();
-                //build_cgi_param(pa, request, *hap);
-                handle_dynamic_request(pa, client_fd, client_dbuf->buffer + header_len, content_length);
-                if(last_conn == 0)      return CGI_FOR_WRITE_READY;
-                else                    return CGI_FOR_WRITE_READY_CLOSE;
+            reset_cgi_pool();
+            if(!strcmp(request->http_method, "POST")){
+                if(content_length > 0){
+                    //reset_dynamic_storage(client_dbuf);
+                    //CGI_param *pa = init_cgi_param();
+                   //build_cgi_param(pa, request, *hap);
+                    handle_dynamic_request(pa, client_fd, client_dbuf->buffer + header_len, content_length);
+                    reset_dynamic_storage(client_dbuf);
+                    if(last_conn == 0)      return CGI_FOR_WRITE_READY;
+                    else                    return CGI_FOR_WRITE_READY_CLOSE;
+                }
             }
             handle_dynamic_request(pa, client_fd, NULL, 0);
             if(last_conn == 0)     return CGI_FOR_READ_READY;

@@ -1,1 +1,1 @@
-9999 4949 /home/lzx/computer_network/liso_server/message/a.log /home/lzx/computer_network/liso_server/message/a.lock /home/lzx/computer_network/liso_server/www /etc/pki_jungle/myCA/private/server.key /etc/pki_jungle/myCA/certs/server.crt
+9999 4949 /home/lzx/http-server/message/a.log /home/lzx/http-server/message/a.lock /home/lzx/http-server/www /home/lzx/http-server/flask_with_cgi.py server.key server.crt

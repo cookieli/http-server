@@ -23,6 +23,7 @@ content_type MIME[5] = {{".html", "text/html"},{".css", "text/css"},{".png","ima
 char *WWW_FOLDER;
 CGI_pool *cgi_pool;
 
+
 char *construct_error(char *code, char *reason){
     char *reply = (char *)calloc(BUF_SIZE, sizeof(char));
     construct_status_line(reply, code, reason);
@@ -279,8 +280,8 @@ int end_with_crlf(const char *str) {return end_with(str, crlf);}
 /*it is function about cgi set up*/
 CGI_param* init_cgi_param(){
     CGI_param *ret = (CGI_param *)malloc(sizeof(CGI_param));
-    ret->filename = CGI_script;
-    ret->argv[0] = CGI_script;
+    ret->filename = "flask_with_cgi.py";
+    ret->argv[0] = "flask_with_cgi.py";
     ret->argv[1] = NULL;
     for(int i = 0; i < CGI_ENVP_LEN; i++) ret->envp[i] = NULL;
     return ret;
@@ -364,6 +365,7 @@ CGI_executer* init_cgi_executer(CGI_param *pa, int client_fd){
     CGI_executer *exe = (CGI_executer *)malloc(sizeof(CGI_executer));
     exe->client_fd = client_fd;
     exe->cgi_parameter = pa;
+    exe->cgi_dbuf = (dynamic_storage *)malloc(sizeof(dynamic_storage));
     init_dynamic_storage(exe->cgi_dbuf, BUF_SIZE);
     return exe;
 }
@@ -378,7 +380,14 @@ void init_cgi_pool(){
         cgi_pool->executers[i] =NULL;
     }
 }
-
+void reset_cgi_pool(){
+    for(int i = 0; i < FD_SIZE; i++){
+        if(cgi_pool->executers[i] != NULL){
+            free_cgi_executer(cgi_pool->executers[i]);
+            cgi_pool->executers[i] = NULL;
+        }
+    }
+}
 void add_cgi_executer_to_pool(CGI_executer *exe){
     int i;
     for(i = 0; i < FD_SIZE; i++){
@@ -510,7 +519,7 @@ processes.\n");
 
 void handle_dynamic_request(CGI_param *pa, int client_fd, char *post_body, size_t content_len){
     CGI_executer *exe = init_cgi_executer(pa, client_fd);
-    append_storage_dbuf(exe->cgi_dbuf, post_body, content_len);
+    if(content_len > 0)  append_storage_dbuf(exe->cgi_dbuf, post_body, content_len);
     add_cgi_executer_to_pool(exe);
     pid_t pid;
 

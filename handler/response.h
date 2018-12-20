@@ -62,6 +62,7 @@ char* new_string(char *str);
 CGI_executer* init_cgi_executer(CGI_param *pa, int client_fd);
 void free_cgi_executer(CGI_executer *exe);
 void init_cgi_pool();
+void reset_cgi_pool();
 void free_cgi_pool();
 void add_cgi_executer_to_pool(CGI_executer *exe);
 CGI_executer* get_executer_from_pool_by_client(int client_fd);
