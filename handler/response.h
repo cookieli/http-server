@@ -69,3 +69,6 @@ CGI_executer* get_executer_from_pool_by_client(int client_fd);
 void clear_cgi_executer_from_pool_by_client(int client_fd);
 void execve_error_handler();
 void handle_dynamic_request(CGI_param *pa, int client_fd, char *post_body, size_t content_len);
+void print_cgi_param(CGI_param *pa);
+void print_executer(CGI_executer *exe);
+void print_executers_pool();

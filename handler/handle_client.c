@@ -314,6 +314,7 @@ void handle_client(){
             case(CGI_FOR_READ_READY):
                 reset_dynamic_storage(p->client_dbuf[i]);
                 p->state[i] = WAITING_FOR_CGI;
+                print_executers_pool();
                 exe = get_executer_from_pool_by_client(p->client_fd[i]);
                 if(exe == NULL){
                     fprintf(stderr, "don't have this executer for read\n");

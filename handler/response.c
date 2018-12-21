@@ -215,7 +215,7 @@ int check_HTTP_version(Request *req){
     char *target = "HTTP/1.1";
     if(!strcmp(http_version, target)){
         return 0;
-    } 
+    }
     return -1;
 }
 
@@ -280,8 +280,8 @@ int end_with_crlf(const char *str) {return end_with(str, crlf);}
 /*it is function about cgi set up*/
 CGI_param* init_cgi_param(){
     CGI_param *ret = (CGI_param *)malloc(sizeof(CGI_param));
-    ret->filename = "flask_with_cgi.py";
-    ret->argv[0] = "flask_with_cgi.py";
+    ret->filename = CGI_script;
+    ret->argv[0] = CGI_script;
     ret->argv[1] = NULL;
     for(int i = 0; i < CGI_ENVP_LEN; i++) ret->envp[i] = NULL;
     return ret;
@@ -295,6 +295,14 @@ void free_cgi_param(CGI_param *pa){
     }
     free(pa);
 }
+
+
+void print_cgi_param(CGI_param *pa){
+    fprintf(stderr, "-----cgi_parameter----\n");
+    fprintf(stderr, "-----cgi file name: %s\n", pa->filename);
+}
+
+
 void build_cgi_param(CGI_param *pa, Request *request, host_and_port *hap){
     int index = 0;
     set_envp_header_with_str(pa, "GATEWAY_INTERFACE", "CGI/1.1", index++);
@@ -369,6 +377,18 @@ CGI_executer* init_cgi_executer(CGI_param *pa, int client_fd){
     init_dynamic_storage(exe->cgi_dbuf, BUF_SIZE);
     return exe;
 }
+
+void print_executer(CGI_executer *exe){
+    fprintf(stderr, "-----cgi_executer-start----");
+    fprintf(stderr, "executer_client: %d\n", exe->client_fd);
+    fprintf(stderr, "cgi executer write to:%d\n", exe->stdin_pipe[1]);
+    fprintf(stderr, "cgi executer read from: %d\n", exe->stdout_pipe[0]);
+    fprintf(stderr, "executer's buffer\n");
+    fprintf(stderr, "executer->buffer_offser: %ld\n", exe->cgi_dbuf->offset);
+    fprintf(stderr, "executer:%s\n", exe->cgi_dbuf->buffer);
+    fprintf(stderr, "end executer info\n");
+}
+
 void free_cgi_executer(CGI_executer *exe){
     free_cgi_param(exe->cgi_parameter);
     free_dynamic_storage(exe->cgi_dbuf);
@@ -378,6 +398,13 @@ void init_cgi_pool(){
     cgi_pool = (CGI_pool *)malloc(sizeof(CGI_pool));
     for(int i = 0; i < FD_SIZE; i++){
         cgi_pool->executers[i] =NULL;
+    }
+}
+void print_executers_pool(){
+    fprintf(stderr, "------cgi executer pool state\n-----");
+    for(int i = 0; i < FD_SIZE; i++){
+        if(cgi_pool->executers[i] != NULL)
+                  print_executer(cgi_pool->executers[i]);
     }
 }
 void reset_cgi_pool(){
