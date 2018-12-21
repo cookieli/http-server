@@ -51,6 +51,7 @@ Request * parse(char *buffer, int size, int socketFd) {
 	if (state == STATE_CRLFCRLF) {
 		Request *request = (Request *) malloc(sizeof(Request));
         request->header_count=0;
+        request->header_capacity = init_header_size;
      //TODO You will need to handle resizing this in parser.y
         request->headers = (Request_header *) malloc(sizeof(Request_header) * init_header_size);
 		set_parsing_options(buf, i, request);

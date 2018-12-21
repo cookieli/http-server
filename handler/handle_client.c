@@ -357,7 +357,7 @@ void handle_client(){
             if(exe == NULL){
                 fprintf(stderr, "executer doesn't exist\n");
             }
-            dynamic_storage *storage_dbuf = p->client_dbuf[i];
+            dynamic_storage *storage_dbuf = exe->cgi_dbuf;
             size_t send_granularity = BUF_SIZE;
             size_t send_len = min(send_granularity, storage_dbuf->offset - storage_dbuf->send_offset);
             size_t send_bytes = write(exe->stdin_pipe[1], storage_dbuf->buffer+ storage_dbuf->send_offset, send_len);
@@ -371,7 +371,7 @@ void handle_client(){
                 int pipe_client = p->cgi_client[i];
                 clear_cgi_pipe_from_pool(pipe_client);
                 fprintf(stderr, "clear write pipe from client_pool\n");
-                fprintf(stderr, "add read pipe to client_pool\n");
+                fprintf(stderr, "and read pipe to client_pool\n");
                 add_cgi_pipe_to_client_pool(exe->stdout_pipe[0], pipe_client, CGI_FOR_READ_PIPE);
             }
         }
@@ -391,12 +391,12 @@ void handle_client(){
             }
             dynamic_storage *client_dbuf = get_client_dbuf(p->cgi_client[i]);
             if(readret > 0){
-                fprintf(stderr, "what read is %s\n", cgi_buf);
+                //fprintf(stderr, "what read is %s\n", cgi_buf);
                 append_storage_dbuf(client_dbuf, cgi_buf, readret);
             }
             if(readret == 0){
                 fprintf(stderr, "have read all messages from buf\n");
-                fprintf(stderr, "message: %s\n", client_dbuf->buffer);
+                //fprintf(stderr, "message: %s\n", client_dbuf->buffer);
                 p->state[get_client_index(p->cgi_client[i])] = READY_FOR_WRITE;
                 //clear_cgi_pipe_from_pool(exe->client_fd);
                 clear_client_by_index(fd, i);

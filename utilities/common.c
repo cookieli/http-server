@@ -152,7 +152,7 @@ void init_dynamic_storage(dynamic_storage *s, size_t capacity){
 void append_storage_dbuf(dynamic_storage *s, char *buf, ssize_t len){
     if(s->offset + len > s->capacity){
         int extension = s->capacity;
-        while(s->offset + len > extension) extension *= 2;
+        while((s->offset + len) > extension) extension *= 2;
         s->buffer = (char *)realloc(s->buffer, extension);
         s->capacity = extension;
     }

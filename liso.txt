@@ -1,1 +1,1 @@
-9999 4949 /home/lzx/http-server/message/a.log /home/lzx/http-server/message/a.lock /home/lzx/http-server/www /home/lzx/http-server/flask_with_cgi.py server.key server.crt
+9999 4949 /home/lzx/http-server/message/a.log /home/lzx/http-server/message/a.lock /home/lzx/http-server/www /home/lzx/http-server/flaskr/flaskr.py server.key server.crt

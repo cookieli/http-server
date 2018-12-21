@@ -386,7 +386,7 @@ void print_executer(CGI_executer *exe){
     fprintf(stderr, "executer's buffer\n");
     fprintf(stderr, "executer->buffer_offser: %ld\n", exe->cgi_dbuf->offset);
     fprintf(stderr, "executer:%s\n", exe->cgi_dbuf->buffer);
-    fprintf(stderr, "end executer info\n");
+    fprintf(stderr, "------end executer info-------\n");
 }
 
 void free_cgi_executer(CGI_executer *exe){
@@ -406,6 +406,7 @@ void print_executers_pool(){
         if(cgi_pool->executers[i] != NULL)
                   print_executer(cgi_pool->executers[i]);
     }
+    fprintf(stderr, "-------cgi executer pool state\n-----");
 }
 void reset_cgi_pool(){
     for(int i = 0; i < FD_SIZE; i++){
